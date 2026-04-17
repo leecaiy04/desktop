@@ -1,0 +1,93 @@
+name: Build Nextcloud Desktop
+
+  on:
+    push:
+      branches: [main, master]
+    workflow_dispatch:
+
+  jobs:
+    build:
+      strategy:
+        matrix:
+          include:
+            - arch: x86_64
+              runner: ubuntu-22.04
+              platform: linux/amd64
+            - arch: aarch64
+              runner: ubuntu-22.04
+              platform: linux/arm64
+
+      runs-on: ${{ matrix.runner }}
+      name: Build (${{ matrix.arch }})
+
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+          with:
+            submodules: recursive
+
+        - name: Set up QEMU (for arm64 cross-compile)
+          if: matrix.arch == 'aarch64'
+          uses: docker/setup-qemu-action@v3
+          with:
+            platforms: arm64
+
+        - name: Install dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y \
+              cmake ninja-build \
+              libssl-dev libsqlite3-dev \
+              qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
+              qt6-l10n-tools libqt6keychain1 qt6-keychain-dev \
+              libkf6archive-dev \
+              extra-cmake-modules \
+              libxcb-cursor-dev \
+              pkg-config \
+              dpkg-dev fakeroot
+
+        - name: Configure (cmake)
+          run: |
+            cmake -B build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX=/usr \
+              -DBUILD_TESTING=OFF
+
+        - name: Build
+          run: cmake --build build --parallel $(nproc)
+
+        - name: Install to staging
+          run: |
+            DESTDIR=${{ github.workspace }}/staging cmake --install build
+
+        - name: Build deb package
+          run: |
+            mkdir -p pkg/DEBIAN
+            cat > pkg/DEBIAN/control <<EOF
+            Package: nextcloud-desktop
+            Version: $(git describe --tags --abbrev=0 2>/dev/null || echo "3.x")
+            Architecture: ${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}
+            Maintainer: lecaiy04
+            Description: Nextcloud Desktop Client
+            EOF
+            cp -r ${{ github.workspace }}/staging/usr pkg/usr
+            dpkg-deb --build pkg nextcloud-desktop_${{ matrix.arch }}.deb
+
+        - name: Build AppImage
+          run: |
+            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+            chmod +x linuxdeploy-x86_64.AppImage
+            ./linuxdeploy-x86_64.AppImage \
+              --appdir ${{ github.workspace }}/staging \
+              --output appimage \
+              --desktop-file staging/usr/share/applications/com.nextcloud.desktopclient.nextcloud.desktop \
+              --icon-file staging/usr/share/icons/hicolor/512x512/apps/Nextcloud.png
+            mv Nextcloud*.AppImage nextcloud-desktop_${{ matrix.arch }}.AppImage
+
+        - name: Upload artifacts
+          uses: actions/upload-artifact@v4
+          with:
+            name: nextcloud-${{ matrix.arch }}
+            path: |
+              nextcloud-desktop_${{ matrix.arch }}.deb
+              nextcloud-desktop_${{ matrix.arch }}.AppImage
