@@ -73,7 +73,8 @@ jobs:
             libxcb-cursor-dev \
             pkg-config \
             dpkg-dev fakeroot \
-            wget
+            wget \
+            libp11-dev
 
       - name: Build and install ECM 6.0
         run: |
