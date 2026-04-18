@@ -6,19 +6,54 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-24.04
-            appimage_arch: x86_64
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            appimage_arch: aarch64
+  build-amd64:
+    runs-on: ubuntu-24.04
+    container: ghcr.io/nextcloud/continuous-integration-client-appimage-qt6:client-appimage-el8-6.10.1-1
+    name: Build (amd64)
 
-    runs-on: ${{ matrix.runner }}
-    name: Build (${{ matrix.arch }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build and package
+        env:
+          BUILDNR: ${{ github.run_id }}
+          VERSION_SUFFIX: ${{ github.ref_name }}
+          BUILD_UPDATER: OFF
+          DESKTOP_CLIENT_ROOT: ${{ github.workspace }}
+          EXECUTABLE_NAME: nextcloud
+          APPIMAGE_ARCH: x86_64
+        run: /bin/bash ./admin/linux/build-appimage.sh
+
+      - name: Extract deb from build
+        run: |
+          cd /app
+          shopt -s nullglob
+          debs=(*.deb)
+          if [ "${#debs[@]}" -gt 0 ]; then
+            cp "${debs[0]}" "${{ github.workspace }}/nextcloud-desktop_amd64.deb"
+          fi
+
+      - name: Upload deb artifact
+        if: hashFiles('nextcloud-desktop_amd64.deb') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextcloud-linux-deb-amd64
+          path: nextcloud-desktop_amd64.deb
+
+      - name: Upload AppImage artifact
+        if: hashFiles('*.AppImage') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextcloud-linux-appimage-amd64
+          path: "*.AppImage"
+          compression-level: 0
+
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+    name: Build (arm64)
 
     steps:
       - name: Checkout
@@ -30,16 +65,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            cmake ninja-build \
+            cmake ninja-build git \
             libssl-dev libsqlite3-dev \
             qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
             qt6-l10n-tools libqt6keychain1 qtkeychain-qt6-dev \
             libkf5archive-dev \
-            extra-cmake-modules \
             libxcb-cursor-dev \
             pkg-config \
             dpkg-dev fakeroot \
             wget
+
+      - name: Build and install ECM 6.0
+        run: |
+          cd /tmp
+          git clone --depth 1 --branch v6.0.0 https://invent.kde.org/frameworks/extra-cmake-modules.git
+          cd extra-cmake-modules
+          cmake -B build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build
+          sudo cmake --install build
 
       - name: Configure (cmake)
         run: |
@@ -66,7 +109,7 @@ jobs:
             exit 1
           fi
 
-          mv "${packages[0]}" "nextcloud-desktop_${{ matrix.arch }}.deb"
+          mv "${packages[0]}" "nextcloud-desktop_arm64.deb"
 
       - name: Build AppImage
         id: build-appimage
@@ -76,19 +119,19 @@ jobs:
           BUILD_UPDATER: OFF
           DESKTOP_CLIENT_ROOT: ${{ github.workspace }}
           EXECUTABLE_NAME: nextcloud
-          APPIMAGE_ARCH: ${{ matrix.appimage_arch }}
+          APPIMAGE_ARCH: aarch64
         run: /bin/bash ./admin/linux/build-appimage.sh
 
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nextcloud-linux-deb-${{ matrix.arch }}
-          path: nextcloud-desktop_${{ matrix.arch }}.deb
+          name: nextcloud-linux-deb-arm64
+          path: nextcloud-desktop_arm64.deb
 
       - name: Upload AppImage artifact
         if: steps.build-appimage.outputs.APPIMAGE_NAME != ''
         uses: actions/upload-artifact@v4
         with:
-          name: nextcloud-linux-appimage-${{ matrix.arch }}
+          name: nextcloud-linux-appimage-arm64
           path: ${{ steps.build-appimage.outputs.APPIMAGE_NAME }}
           compression-level: 0
