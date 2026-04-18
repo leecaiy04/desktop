@@ -90,6 +90,7 @@ jobs:
           cd /tmp
           git clone --depth 1 --branch v6.0.0 https://invent.kde.org/frameworks/karchive.git
           cd karchive
+          sed -i 's/set(REQUIRED_QT_VERSION 6.5.0)/set(REQUIRED_QT_VERSION 6.4.0)/' CMakeLists.txt
           cmake -B build -G Ninja \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_PREFIX_PATH=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/cmake \
