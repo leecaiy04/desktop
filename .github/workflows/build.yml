@@ -74,7 +74,8 @@ jobs:
             pkg-config \
             dpkg-dev fakeroot \
             wget \
-            libp11-dev
+            libp11-dev \
+            libbz2-dev liblzma-dev
 
       - name: Build and install ECM 6.0
         run: |
