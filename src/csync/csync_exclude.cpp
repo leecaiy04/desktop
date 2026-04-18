@@ -462,10 +462,10 @@ CSYNC_EXCLUDE_TYPE ExcludedFiles::traversalPatternMatch(const QString &path, Ite
         QRegularExpressionMatch m;
         if (filetype == ItemTypeDirectory
             && _bnameTraversalRegexDir.contains(basePath)) {
-            m = _bnameTraversalRegexDir[basePath].matchView(bnameStr);
+            m = _bnameTraversalRegexDir[basePath].match(bnameStr);
         } else if (filetype == ItemTypeFile
             && _bnameTraversalRegexFile.contains(basePath)) {
-            m = _bnameTraversalRegexFile[basePath].matchView(bnameStr);
+            m = _bnameTraversalRegexFile[basePath].match(bnameStr);
         } else {
             continue;
         }
