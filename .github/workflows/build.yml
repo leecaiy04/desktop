@@ -92,6 +92,7 @@ jobs:
           cd karchive
           cmake -B build -G Ninja \
             -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_PREFIX_PATH=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/cmake \
             -DBUILD_TESTING=OFF
           cmake --build build
           sudo cmake --install build
