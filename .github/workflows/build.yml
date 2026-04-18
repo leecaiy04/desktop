@@ -85,6 +85,19 @@ jobs:
           cmake --build build
           sudo cmake --install build
 
+      - name: Build and install KDSingleApplication-qt6
+        run: |
+          cd /tmp
+          git clone --depth 1 --branch v1.2.0 https://github.com/KDAB/KDSingleApplication.git
+          cd KDSingleApplication
+          cmake -B build -G Ninja \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DKDSingleApplication_QT6=ON \
+            -DKDSingleApplication_TESTS=OFF \
+            -DKDSingleApplication_EXAMPLES=OFF
+          cmake --build build
+          sudo cmake --install build
+
       - name: Configure (cmake)
         run: |
           cmake -B build -G Ninja \
