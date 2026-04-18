@@ -77,7 +77,9 @@ jobs:
             wget \
             libp11-dev \
             libbz2-dev liblzma-dev \
-            librsvg2-bin
+            librsvg2-bin \
+            qt6-webengine-dev qt6-webengine-dev-tools \
+            qt6-5compat-dev
 
       - name: Build and install ECM 6.0
         run: |
