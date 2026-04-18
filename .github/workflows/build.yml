@@ -85,6 +85,17 @@ jobs:
           cmake --build build
           sudo cmake --install build
 
+      - name: Build and install KF6Archive
+        run: |
+          cd /tmp
+          git clone --depth 1 --branch v6.0.0 https://invent.kde.org/frameworks/karchive.git
+          cd karchive
+          cmake -B build -G Ninja \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_TESTING=OFF
+          cmake --build build
+          sudo cmake --install build
+
       - name: Build and install KDSingleApplication-qt6
         run: |
           cd /tmp
