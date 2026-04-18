@@ -1,93 +1,94 @@
 name: Build Nextcloud Desktop
 
-  on:
-    push:
-      branches: [main, master]
-    workflow_dispatch:
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
 
-  jobs:
-    build:
-      strategy:
-        matrix:
-          include:
-            - arch: x86_64
-              runner: ubuntu-22.04
-              platform: linux/amd64
-            - arch: aarch64
-              runner: ubuntu-22.04
-              platform: linux/arm64
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            appimage_arch: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            appimage_arch: aarch64
 
-      runs-on: ${{ matrix.runner }}
-      name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    name: Build (${{ matrix.arch }})
 
-      steps:
-        - name: Checkout
-          uses: actions/checkout@v4
-          with:
-            submodules: recursive
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-        - name: Set up QEMU (for arm64 cross-compile)
-          if: matrix.arch == 'aarch64'
-          uses: docker/setup-qemu-action@v3
-          with:
-            platforms: arm64
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build \
+            libssl-dev libsqlite3-dev \
+            qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
+            qt6-l10n-tools libqt6keychain1 qt6-keychain-dev \
+            libkf6archive-dev \
+            extra-cmake-modules \
+            libxcb-cursor-dev \
+            pkg-config \
+            dpkg-dev fakeroot \
+            wget
 
-        - name: Install dependencies
-          run: |
-            sudo apt-get update
-            sudo apt-get install -y \
-              cmake ninja-build \
-              libssl-dev libsqlite3-dev \
-              qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
-              qt6-l10n-tools libqt6keychain1 qt6-keychain-dev \
-              libkf6archive-dev \
-              extra-cmake-modules \
-              libxcb-cursor-dev \
-              pkg-config \
-              dpkg-dev fakeroot
+      - name: Configure (cmake)
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_TESTING=OFF
 
-        - name: Configure (cmake)
-          run: |
-            cmake -B build -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_INSTALL_PREFIX=/usr \
-              -DBUILD_TESTING=OFF
+      - name: Build
+        run: cmake --build build --parallel "$(nproc)"
 
-        - name: Build
-          run: cmake --build build --parallel $(nproc)
+      - name: Build deb package with CPack
+        shell: bash
+        run: |
+          (
+            cd build
+            cpack -G DEB
+          )
 
-        - name: Install to staging
-          run: |
-            DESTDIR=${{ github.workspace }}/staging cmake --install build
+          shopt -s nullglob
+          packages=(build/*.deb)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "No deb package produced" >&2
+            exit 1
+          fi
 
-        - name: Build deb package
-          run: |
-            mkdir -p pkg/DEBIAN
-            cat > pkg/DEBIAN/control <<EOF
-            Package: nextcloud-desktop
-            Version: $(git describe --tags --abbrev=0 2>/dev/null || echo "3.x")
-            Architecture: ${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}
-            Maintainer: lecaiy04
-            Description: Nextcloud Desktop Client
-            EOF
-            cp -r ${{ github.workspace }}/staging/usr pkg/usr
-            dpkg-deb --build pkg nextcloud-desktop_${{ matrix.arch }}.deb
+          mv "${packages[0]}" "nextcloud-desktop_${{ matrix.arch }}.deb"
 
-        - name: Build AppImage
-          run: |
-            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-            chmod +x linuxdeploy-x86_64.AppImage
-            ./linuxdeploy-x86_64.AppImage \
-              --appdir ${{ github.workspace }}/staging \
-              --output appimage \
-              --desktop-file staging/usr/share/applications/com.nextcloud.desktopclient.nextcloud.desktop \
-              --icon-file staging/usr/share/icons/hicolor/512x512/apps/Nextcloud.png
-            mv Nextcloud*.AppImage nextcloud-desktop_${{ matrix.arch }}.AppImage
+      - name: Build AppImage
+        id: build-appimage
+        env:
+          BUILDNR: ${{ github.run_id }}
+          VERSION_SUFFIX: ${{ github.ref_name }}
+          BUILD_UPDATER: OFF
+          DESKTOP_CLIENT_ROOT: ${{ github.workspace }}
+          EXECUTABLE_NAME: nextcloud
+          APPIMAGE_ARCH: ${{ matrix.appimage_arch }}
+        run: /bin/bash ./admin/linux/build-appimage.sh
 
-        - name: Upload artifacts
-          uses: actions/upload-artifact@v4
-          with:
-            name: nextcloud-${{ matrix.arch }}
-            path: |
-              nextcloud-desktop_${{ matrix.arch }}.deb
-              nextcloud-desktop_${{ matrix.arch }}.AppImage
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextcloud-linux-deb-${{ matrix.arch }}
+          path: nextcloud-desktop_${{ matrix.arch }}.deb
+
+      - name: Upload AppImage artifact
+        if: steps.build-appimage.outputs.APPIMAGE_NAME != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextcloud-linux-appimage-${{ matrix.arch }}
+          path: ${{ steps.build-appimage.outputs.APPIMAGE_NAME }}
+          compression-level: 0

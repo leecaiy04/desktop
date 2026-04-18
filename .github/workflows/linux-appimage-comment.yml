@@ -39,26 +39,28 @@ jobs:
               repo: context.repo.repo,
               run_id: context.payload.workflow_run.id,
             });
-            const artifact = workflowArtifacts.data.artifacts.filter((artifact) => artifact.name == `nextcloud-appimage-pr-${prId}`)[0];
+            const artifactPrefix = `nextcloud-appimage-pr-${prId}-`;
+            const artifacts = workflowArtifacts.data.artifacts.filter((artifact) => artifact.name.startsWith(artifactPrefix));
 
-            if (!artifact) {
+            if (artifacts.length === 0) {
               console.log("Could not find matching artifact");
               return;
             }
 
-            // artifact.url and artifact.archive_download_url contain a URL that's supposed to be used by API clients only
-            const artifactUrl = `https://github.com/nextcloud/desktop/actions/runs/${artifact.workflow_run.id}/artifacts/${artifact.id}`;
-
             const comment_identifier_string = "<!-- automated comment for an appimage build -->";
+            const artifactLines = artifacts.map((artifact) => {
+              // artifact.url and artifact.archive_download_url contain a URL that's supposed to be used by API clients only
+              const artifactUrl = `https://github.com/nextcloud/desktop/actions/runs/${artifact.workflow_run.id}/artifacts/${artifact.id}`;
+              return `- [${artifact.name}.zip](${artifactUrl}) (digest: \`${artifact.digest}\`)`;
+            }).join("\n");
 
             const comment_body = `
               ${comment_identifier_string}
 
-              Artifact containing the AppImage: [${artifact.name}.zip](${artifactUrl})
+              Artifacts containing the AppImage builds:
+              ${artifactLines}
 
-              Digest: \`${artifact.digest}\`
-
-              To test this change/fix you can download the above artifact file, unzip it, and run it.
+              To test this change/fix you can download one of the above artifact files, unzip it, and run it.
 
               Please make sure to quit your existing Nextcloud app and backup your data.
             `;
